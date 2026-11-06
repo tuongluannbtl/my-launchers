@@ -1,0 +1,926 @@
+name: Build 2 Android Launchers
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build-apks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Generate Source Code & Compile Both APKs
+        run: |
+          sdkmanager "platforms;android-34" "build-tools;34.0.0"
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/34.0.0"
+          PLATFORM="$ANDROID_HOME/platforms/android-34/android.jar"
+
+          # Tạo Keystore để ký file APK cài được ngay
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Luan, OU=Dev, O=Home, L=KonTum, S=KT, C=VN"
+
+          mkdir -p output_apks
+
+          # ==========================================
+          # 1. TẠO & BUILD JBL TV LAUNCHER
+          # ==========================================
+          mkdir -p jbl/src/com/luan/jbllauncher jbl/res/layout jbl/obj
+
+          cat << 'EOF' > jbl/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.luan.jbllauncher"
+              android:versionCode="1"
+              android:versionName="1.0">
+              <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <uses-permission android:name="android.permission.WRITE_SETTINGS" />
+              <application
+                  android:label="JBL TV Home"
+                  android:persistent="true"
+                  android:largeHeap="false"
+                  android:theme="@android:style/Theme.DeviceDefault.NoActionBar.Fullscreen"
+                  android:hardwareAccelerated="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="sensorLandscape"
+                      android:launchMode="singleTask"
+                      android:clearTaskOnLaunch="true"
+                      android:stateNotNeeded="true"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > jbl/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#121212">
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:orientation="vertical"
+                  android:padding="24dp">
+                  <LinearLayout
+                      android:layout_width="match_parent"
+                      android:layout_height="wrap_content"
+                      android:orientation="horizontal"
+                      android:gravity="center_vertical"
+                      android:layout_marginBottom="16dp">
+                      <LinearLayout
+                          android:layout_width="0dp"
+                          android:layout_height="wrap_content"
+                          android:layout_weight="1"
+                          android:orientation="vertical">
+                          <TextClock
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:format12Hour="HH:mm"
+                              android:format24Hour="HH:mm"
+                              android:textColor="#FFFFFF"
+                              android:textSize="68sp"
+                              android:fontFamily="sans-serif-light" />
+                          <TextClock
+                              android:layout_width="wrap_content"
+                              android:layout_height="wrap_content"
+                              android:format12Hour="EEEE, dd/MM/yyyy"
+                              android:format24Hour="EEEE, dd/MM/yyyy"
+                              android:textColor="#9E9E9E"
+                              android:textSize="18sp"
+                              android:layout_marginTop="-8dp" />
+                      </LinearLayout>
+                      <LinearLayout
+                          android:layout_width="340dp"
+                          android:layout_height="wrap_content"
+                          android:orientation="vertical"
+                          android:background="#1E1F23"
+                          android:padding="12dp"
+                          android:layout_marginRight="14dp">
+                          <LinearLayout
+                              android:layout_width="match_parent"
+                              android:layout_height="wrap_content"
+                              android:orientation="horizontal"
+                              android:gravity="center_vertical"
+                              android:layout_marginBottom="8dp">
+                              <TextView
+                                  android:layout_width="30dp"
+                                  android:layout_height="wrap_content"
+                                  android:text="🔊"
+                                  android:textSize="16sp" />
+                              <SeekBar
+                                  android:id="@+id/seekVolume"
+                                  android:layout_width="match_parent"
+                                  android:layout_height="wrap_content" />
+                          </LinearLayout>
+                          <LinearLayout
+                              android:layout_width="match_parent"
+                              android:layout_height="wrap_content"
+                              android:orientation="horizontal"
+                              android:gravity="center_vertical">
+                              <TextView
+                                  android:layout_width="30dp"
+                                  android:layout_height="wrap_content"
+                                  android:text="☀️"
+                                  android:textSize="16sp" />
+                              <SeekBar
+                                  android:id="@+id/seekBrightness"
+                                  android:layout_width="match_parent"
+                                  android:layout_height="wrap_content"
+                                  android:max="255" />
+                          </LinearLayout>
+                      </LinearLayout>
+                      <LinearLayout
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:orientation="vertical">
+                          <Button
+                              android:id="@+id/btnSleepNow"
+                              android:layout_width="125dp"
+                              android:layout_height="40dp"
+                              android:text="🌙 Tắt màn"
+                              android:textColor="#E0E0E0"
+                              android:textSize="13sp"
+                              android:background="#2A2B30"
+                              android:layout_marginBottom="8dp" />
+                          <Button
+                              android:id="@+id/btnSettings"
+                              android:layout_width="125dp"
+                              android:layout_height="40dp"
+                              android:text="⚙ Cài đặt"
+                              android:textColor="#E0E0E0"
+                              android:textSize="13sp"
+                              android:background="#2A2B30" />
+                      </LinearLayout>
+                  </LinearLayout>
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="ỨNG DỤNG CHÍNH"
+                      android:textColor="#757575"
+                      android:textSize="12sp"
+                      android:textStyle="bold"
+                      android:layout_marginBottom="6dp" />
+                  <LinearLayout
+                      android:id="@+id/favRow"
+                      android:layout_width="match_parent"
+                      android:layout_height="125dp"
+                      android:orientation="horizontal"
+                      android:layout_marginBottom="14dp" />
+                  <TextView
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:text="TẤT CẢ ỨNG DỤNG"
+                      android:textColor="#757575"
+                      android:textSize="12sp"
+                      android:textStyle="bold"
+                      android:layout_marginBottom="6dp" />
+                  <GridView
+                      android:id="@+id/appGrid"
+                      android:layout_width="match_parent"
+                      android:layout_height="match_parent"
+                      android:numColumns="5"
+                      android:horizontalSpacing="12dp"
+                      android:verticalSpacing="12dp"
+                      android:stretchMode="columnWidth"
+                      android:gravity="center"
+                      android:scrollbars="none" />
+              </LinearLayout>
+              <FrameLayout
+                  android:id="@+id/screensaverOverlay"
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:background="#000000"
+                  android:visibility="gone"
+                  android:clickable="true"
+                  android:focusable="true">
+                  <LinearLayout
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:layout_gravity="center"
+                      android:gravity="center"
+                      android:orientation="vertical">
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="HH:mm"
+                          android:format24Hour="HH:mm"
+                          android:textColor="#424242"
+                          android:textSize="130sp"
+                          android:fontFamily="sans-serif-thin" />
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="EEEE, dd/MM"
+                          android:format24Hour="EEEE, dd/MM"
+                          android:textColor="#2C2C2C"
+                          android:textSize="24sp" />
+                  </LinearLayout>
+              </FrameLayout>
+          </FrameLayout>
+          EOF
+
+          cat << 'EOF' > jbl/src/com/luan/jbllauncher/MainActivity.java
+          package com.luan.jbllauncher;
+          import android.app.Activity;
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.IntentFilter;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.graphics.drawable.Drawable;
+          import android.graphics.drawable.GradientDrawable;
+          import android.media.AudioManager;
+          import android.net.Uri;
+          import android.os.Build;
+          import android.os.Bundle;
+          import android.os.Handler;
+          import android.os.Looper;
+          import android.provider.Settings;
+          import android.text.TextUtils;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.view.WindowManager;
+          import android.widget.BaseAdapter;
+          import android.widget.Button;
+          import android.widget.FrameLayout;
+          import android.widget.GridView;
+          import android.widget.ImageView;
+          import android.widget.LinearLayout;
+          import android.widget.SeekBar;
+          import android.widget.TextView;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.List;
+
+          public class MainActivity extends Activity {
+              private GridView appGrid;
+              private LinearLayout favRow;
+              private FrameLayout screensaverOverlay;
+              private SeekBar seekVolume, seekBrightness;
+              private AudioManager audioManager;
+              private List<AppItem> favList = new ArrayList<>();
+              private List<AppItem> otherList = new ArrayList<>();
+              private AppAdapter adapter;
+              private static final long SCREENSAVER_DELAY = 2 * 60 * 1000L;
+              private final Handler idleHandler = new Handler(Looper.getMainLooper());
+              private final Runnable screensaverRunnable = new Runnable() {
+                  @Override public void run() { enterScreensaver(); }
+              };
+              private static final String[] FAV_KEYWORDS = {
+                  "youtube", "revanced", "rimusic", "ymusic", "smarttube", "spotify", "music", "vanced", "chrome"
+              };
+              private static final String[] HIDDEN_PACKAGES = {
+                  "com.android.traceur", "com.android.PrintSpooler", "com.android.keychain"
+              };
+              private static class AppItem {
+                  String label;
+                  String packageName;
+                  Drawable icon;
+              }
+              private final BroadcastReceiver packageReceiver = new BroadcastReceiver() {
+                  @Override public void onReceive(Context context, Intent intent) { loadApps(); }
+              };
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  appGrid = findViewById(R.id.appGrid);
+                  favRow = findViewById(R.id.favRow);
+                  screensaverOverlay = findViewById(R.id.screensaverOverlay);
+                  seekVolume = findViewById(R.id.seekVolume);
+                  seekBrightness = findViewById(R.id.seekBrightness);
+                  Button btnSettings = findViewById(R.id.btnSettings);
+                  Button btnSleepNow = findViewById(R.id.btnSleepNow);
+                  btnSettings.setOnClickListener(v -> {
+                      try { startActivity(new Intent(Settings.ACTION_SETTINGS)); } catch (Exception ignored) {}
+                  });
+                  btnSleepNow.setOnClickListener(v -> enterScreensaver());
+                  screensaverOverlay.setOnClickListener(v -> exitScreensaver());
+                  setupSliders();
+                  adapter = new AppAdapter();
+                  appGrid.setAdapter(adapter);
+                  appGrid.setOnItemClickListener((parent, view, position, id) -> openApp(otherList.get(position)));
+                  appGrid.setOnItemLongClickListener((parent, view, position, id) -> {
+                      openAppInfo(otherList.get(position));
+                      return true;
+                  });
+                  IntentFilter filter = new IntentFilter();
+                  filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+                  filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+                  filter.addDataScheme("package");
+                  registerReceiver(packageReceiver, filter);
+                  loadApps();
+                  resetIdleTimer();
+              }
+              private void setupSliders() {
+                  audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+                  int maxVol = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC);
+                  int curVol = audioManager.getStreamVolume(AudioManager.STREAM_MUSIC);
+                  seekVolume.setMax(maxVol);
+                  seekVolume.setProgress(curVol);
+                  seekVolume.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                      @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                          if (fromUser) audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, progress, 0);
+                      }
+                      @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+                      @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+                  });
+                  int curBrightness = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, 150);
+                  seekBrightness.setProgress(curBrightness);
+                  seekBrightness.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                      @Override public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                          if (!fromUser) return;
+                          int safeBrightness = Math.max(10, progress);
+                          WindowManager.LayoutParams lp = getWindow().getAttributes();
+                          lp.screenBrightness = safeBrightness / 255f;
+                          getWindow().setAttributes(lp);
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.System.canWrite(MainActivity.this)) {
+                              Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL);
+                              Settings.System.putInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS, safeBrightness);
+                          }
+                      }
+                      @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+                      @Override public void onStopTrackingTouch(SeekBar seekBar) {
+                          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(MainActivity.this)) {
+                              Intent intent = new Intent(Settings.ACTION_MANAGE_WRITE_SETTINGS);
+                              intent.setData(Uri.parse("package:" + getPackageName()));
+                              startActivity(intent);
+                          }
+                      }
+                  });
+              }
+              @Override public boolean dispatchTouchEvent(MotionEvent ev) {
+                  resetIdleTimer();
+                  return super.dispatchTouchEvent(ev);
+              }
+              private void resetIdleTimer() {
+                  idleHandler.removeCallbacks(screensaverRunnable);
+                  idleHandler.postDelayed(screensaverRunnable, SCREENSAVER_DELAY);
+              }
+              private void enterScreensaver() {
+                  screensaverOverlay.setVisibility(View.VISIBLE);
+                  WindowManager.LayoutParams lp = getWindow().getAttributes();
+                  lp.screenBrightness = 0.01f;
+                  getWindow().setAttributes(lp);
+              }
+              private void exitScreensaver() {
+                  screensaverOverlay.setVisibility(View.GONE);
+                  WindowManager.LayoutParams lp = getWindow().getAttributes();
+                  lp.screenBrightness = Math.max(10, seekBrightness.getProgress()) / 255f;
+                  getWindow().setAttributes(lp);
+                  resetIdleTimer();
+              }
+              @Override protected void onResume() {
+                  super.onResume();
+                  if (audioManager != null) seekVolume.setProgress(audioManager.getStreamVolume(AudioManager.STREAM_MUSIC));
+                  resetIdleTimer();
+              }
+              @Override protected void onPause() {
+                  super.onPause();
+                  idleHandler.removeCallbacks(screensaverRunnable);
+              }
+              @Override protected void onDestroy() {
+                  super.onDestroy();
+                  unregisterReceiver(packageReceiver);
+              }
+              @Override public void onBackPressed() {
+                  if (screensaverOverlay.getVisibility() == View.VISIBLE) exitScreensaver();
+              }
+              private void openApp(AppItem app) {
+                  Intent launchIntent = getPackageManager().getLaunchIntentForPackage(app.packageName);
+                  if (launchIntent != null) startActivity(launchIntent);
+              }
+              private void openAppInfo(AppItem app) {
+                  Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                  intent.setData(Uri.parse("package:" + app.packageName));
+                  startActivity(intent);
+              }
+              private void loadApps() {
+                  PackageManager pm = getPackageManager();
+                  Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+                  mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List<ResolveInfo> infos = pm.queryIntentActivities(mainIntent, 0);
+                  favList.clear();
+                  otherList.clear();
+                  String myPkg = getPackageName();
+                  for (ResolveInfo info : infos) {
+                      String pkg = info.activityInfo.packageName;
+                      if (pkg.equals(myPkg) || isHidden(pkg)) continue;
+                      AppItem item = new AppItem();
+                      item.label = info.loadLabel(pm).toString();
+                      item.packageName = pkg;
+                      item.icon = info.loadIcon(pm);
+                      if (isFavorite(pkg, item.label) && favList.size() < 4) favList.add(item);
+                      else otherList.add(item);
+                  }
+                  Comparator<AppItem> sortByName = Comparator.comparing(a -> a.label.toLowerCase());
+                  Collections.sort(favList, sortByName);
+                  Collections.sort(otherList, sortByName);
+                  while (favList.size() < 4 && !otherList.isEmpty()) favList.add(otherList.remove(0));
+                  renderFavRow();
+                  adapter.notifyDataSetChanged();
+              }
+              private boolean isFavorite(String pkg, String label) {
+                  String check = (pkg + " " + label).toLowerCase();
+                  for (String kw : FAV_KEYWORDS) if (check.contains(kw)) return true;
+                  return false;
+              }
+              private boolean isHidden(String pkg) {
+                  for (String h : HIDDEN_PACKAGES) if (pkg.equalsIgnoreCase(h)) return true;
+                  return false;
+              }
+              private void renderFavRow() {
+                  favRow.removeAllViews();
+                  for (int i = 0; i < favList.size(); i++) {
+                      final AppItem item = favList.get(i);
+                      LinearLayout card = createCardView(item, true);
+                      LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.MATCH_PARENT, 1f);
+                      if (i < favList.size() - 1) params.rightMargin = 16;
+                      card.setLayoutParams(params);
+                      card.setOnClickListener(v -> openApp(item));
+                      card.setOnLongClickListener(v -> { openAppInfo(item); return true; });
+                      favRow.addView(card);
+                  }
+              }
+              private LinearLayout createCardView(AppItem item, boolean isLarge) {
+                  LinearLayout card = new LinearLayout(this);
+                  card.setOrientation(LinearLayout.VERTICAL);
+                  card.setGravity(Gravity.CENTER);
+                  int pad = isLarge ? 16 : 12;
+                  card.setPadding(pad, pad, pad, pad);
+                  GradientDrawable shape = new GradientDrawable();
+                  shape.setShape(GradientDrawable.RECTANGLE);
+                  shape.setCornerRadius(isLarge ? 22f : 16f);
+                  shape.setColor(Color.parseColor(isLarge ? "#282A36" : "#1E1F23"));
+                  if (isLarge) shape.setStroke(2, Color.parseColor("#44475A"));
+                  card.setBackground(shape);
+                  ImageView iconView = new ImageView(this);
+                  int iconSize = isLarge ? 72 : 56;
+                  iconView.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+                  iconView.setImageDrawable(item.icon);
+                  TextView titleView = new TextView(this);
+                  titleView.setText(item.label);
+                  titleView.setTextColor(Color.WHITE);
+                  titleView.setTextSize(isLarge ? 15f : 13f);
+                  titleView.setGravity(Gravity.CENTER);
+                  titleView.setSingleLine(true);
+                  titleView.setEllipsize(TextUtils.TruncateAt.END);
+                  LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                  textParams.topMargin = 8;
+                  titleView.setLayoutParams(textParams);
+                  card.addView(iconView);
+                  card.addView(titleView);
+                  return card;
+              }
+              private class AppAdapter extends BaseAdapter {
+                  @Override public int getCount() { return otherList.size(); }
+                  @Override public Object getItem(int pos) { return otherList.get(pos); }
+                  @Override public long getItemId(int pos) { return pos; }
+                  @Override public View getView(int position, View convertView, ViewGroup parent) {
+                      return createCardView(otherList.get(position), false);
+                  }
+              }
+          }
+          EOF
+
+          $BUILD_TOOLS/aapt package -f -m -J jbl/src -M jbl/AndroidManifest.xml -S jbl/res -I $PLATFORM
+          javac -source 1.8 -target 1.8 -d jbl/obj -cp $PLATFORM jbl/src/com/luan/jbllauncher/*.java
+          $BUILD_TOOLS/d8 jbl/obj/com/luan/jbllauncher/*.class --lib $PLATFORM --output jbl/
+          $BUILD_TOOLS/aapt package -f -M jbl/AndroidManifest.xml -S jbl/res -I $PLATFORM -F jbl/unsigned.apk
+          (cd jbl && $BUILD_TOOLS/aapt add unsigned.apk classes.dex)
+          $BUILD_TOOLS/zipalign -f 4 jbl/unsigned.apk jbl/aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out output_apks/JBL_TV_Launcher.apk jbl/aligned.apk
+
+          # ==========================================
+          # 2. TẠO & BUILD LUAN NIAGARA LAUNCHER
+          # ==========================================
+          mkdir -p niagara/src/com/luan/niagaralite niagara/res/layout niagara/obj
+
+          cat << 'EOF' > niagara/AndroidManifest.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              package="com.luan.niagaralite"
+              android:versionCode="1"
+              android:versionName="1.0">
+              <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+              <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+              <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+              <application
+                  android:label="Luan Niagara"
+                  android:theme="@android:style/Theme.DeviceDefault.Wallpaper.NoTitleBar"
+                  android:hardwareAccelerated="true">
+                  <activity
+                      android:name=".MainActivity"
+                      android:screenOrientation="portrait"
+                      android:launchMode="singleTask"
+                      android:clearTaskOnLaunch="true"
+                      android:stateNotNeeded="true"
+                      android:exported="true">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.HOME" />
+                          <category android:name="android.intent.category.DEFAULT" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          cat << 'EOF' > niagara/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#4D000000">
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:orientation="vertical"
+                  android:paddingTop="56dp"
+                  android:paddingStart="28dp"
+                  android:paddingEnd="48dp">
+                  <LinearLayout
+                      android:id="@+id/headerClock"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:layout_marginBottom="20dp">
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="HH:mm"
+                          android:format24Hour="HH:mm"
+                          android:textColor="#FFFFFF"
+                          android:textSize="54sp"
+                          android:fontFamily="sans-serif-light"
+                          android:shadowColor="#80000000"
+                          android:shadowDx="0"
+                          android:shadowDy="2"
+                          android:shadowRadius="6" />
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="EEEE, dd MMMM"
+                          android:format24Hour="EEEE, dd MMMM"
+                          android:textColor="#D0D0D0"
+                          android:textSize="16sp"
+                          android:layout_marginTop="-6dp" />
+                      <TextView
+                          android:id="@+id/txtModeHint"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:text="★ Ứng dụng ghim (Nhấn giữ app để thêm/bớt)"
+                          android:textColor="#80FFFFFF"
+                          android:textSize="12sp"
+                          android:layout_marginTop="6dp" />
+                  </LinearLayout>
+                  <ListView
+                      android:id="@+id/appListView"
+                      android:layout_width="match_parent"
+                      android:layout_height="match_parent"
+                      android:divider="@null"
+                      android:dividerHeight="4dp"
+                      android:scrollbars="none"
+                      android:overScrollMode="never" />
+              </LinearLayout>
+              <TextView
+                  android:id="@+id/letterPopup"
+                  android:layout_width="88dp"
+                  android:layout_height="88dp"
+                  android:layout_gravity="center"
+                  android:gravity="center"
+                  android:textColor="#FFFFFF"
+                  android:textSize="42sp"
+                  android:textStyle="bold"
+                  android:visibility="gone" />
+              <LinearLayout
+                  android:id="@+id/alphabetBar"
+                  android:layout_width="38dp"
+                  android:layout_height="match_parent"
+                  android:layout_gravity="end|center_vertical"
+                  android:layout_marginTop="110dp"
+                  android:layout_marginBottom="48dp"
+                  android:gravity="center"
+                  android:orientation="vertical" />
+          </FrameLayout>
+          EOF
+
+          cat << 'EOF' > niagara/src/com/luan/niagaralite/MainActivity.java
+          package com.luan.niagaralite;
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.IntentFilter;
+          import android.content.SharedPreferences;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.graphics.drawable.Drawable;
+          import android.graphics.drawable.GradientDrawable;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.text.TextUtils;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.BaseAdapter;
+          import android.widget.ImageView;
+          import android.widget.LinearLayout;
+          import android.widget.ListView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import java.text.Normalizer;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.HashMap;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Map;
+          import java.util.Set;
+
+          public class MainActivity extends Activity {
+              private ListView appListView;
+              private LinearLayout alphabetBar, headerClock;
+              private TextView letterPopup, txtModeHint;
+              private List<AppItem> allApps = new ArrayList<>();
+              private List<AppItem> favoriteApps = new ArrayList<>();
+              private List<AppItem> displayedApps = new ArrayList<>();
+              private Map<String, Integer> letterPositionMap = new HashMap<>();
+              private AppAdapter adapter;
+              private SharedPreferences prefs;
+              private Set<String> favPackages = new HashSet<>();
+              private boolean isShowingAllApps = false;
+              private static final String PREFS_NAME = "NiagaraPrefs";
+              private static final String KEY_FAVS = "fav_packages";
+              private static final String[] ALPHABET = {
+                  "★", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                  "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "#"
+              };
+              private static class AppItem {
+                  String label;
+                  String cleanFirstLetter;
+                  String packageName;
+                  Drawable icon;
+              }
+              private final BroadcastReceiver packageReceiver = new BroadcastReceiver() {
+                  @Override public void onReceive(Context context, Intent intent) { loadApps(); }
+              };
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                  favPackages = new HashSet<>(prefs.getStringSet(KEY_FAVS, new HashSet<>()));
+                  appListView = findViewById(R.id.appListView);
+                  alphabetBar = findViewById(R.id.alphabetBar);
+                  letterPopup = findViewById(R.id.letterPopup);
+                  headerClock = findViewById(R.id.headerClock);
+                  txtModeHint = findViewById(R.id.txtModeHint);
+                  GradientDrawable popupBg = new GradientDrawable();
+                  popupBg.setShape(GradientDrawable.OVAL);
+                  popupBg.setColor(Color.parseColor("#CC1E1F23"));
+                  popupBg.setStroke(3, Color.parseColor("#66FFFFFF"));
+                  letterPopup.setBackground(popupBg);
+                  headerClock.setOnClickListener(v -> showFavoritesMode());
+                  adapter = new AppAdapter();
+                  appListView.setAdapter(adapter);
+                  appListView.setOnItemClickListener((parent, view, position, id) -> {
+                      AppItem app = displayedApps.get(position);
+                      Intent launchIntent = getPackageManager().getLaunchIntentForPackage(app.packageName);
+                      if (launchIntent != null) startActivity(launchIntent);
+                  });
+                  appListView.setOnItemLongClickListener((parent, view, position, id) -> {
+                      showAppOptionsDialog(displayedApps.get(position));
+                      return true;
+                  });
+                  setupAlphabetScrollbar();
+                  IntentFilter filter = new IntentFilter();
+                  filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+                  filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+                  filter.addDataScheme("package");
+                  registerReceiver(packageReceiver, filter);
+                  loadApps();
+              }
+              private void setupAlphabetScrollbar() {
+                  alphabetBar.removeAllViews();
+                  for (String letter : ALPHABET) {
+                      TextView tv = new TextView(this);
+                      tv.setText(letter);
+                      tv.setTextColor(letter.equals("★") ? Color.parseColor("#FFD54F") : Color.parseColor("#CCFFFFFF"));
+                      tv.setTextSize(11f);
+                      tv.setGravity(Gravity.CENTER);
+                      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+                      tv.setLayoutParams(lp);
+                      alphabetBar.addView(tv);
+                  }
+                  alphabetBar.setOnTouchListener((v, event) -> {
+                      int action = event.getAction();
+                      if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+                          float y = event.getY();
+                          int height = alphabetBar.getHeight();
+                          int index = (int) ((y / height) * ALPHABET.length);
+                          index = Math.max(0, Math.min(ALPHABET.length - 1, index));
+                          String selectedLetter = ALPHABET[index];
+                          letterPopup.setText(selectedLetter);
+                          letterPopup.setVisibility(View.VISIBLE);
+                          if (selectedLetter.equals("★")) {
+                              showFavoritesMode();
+                          } else {
+                              if (!isShowingAllApps) showAllAppsMode();
+                              Integer targetPos = letterPositionMap.get(selectedLetter);
+                              if (targetPos != null) appListView.setSelectionFromTop(targetPos, 0);
+                          }
+                          return true;
+                      } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                          letterPopup.setVisibility(View.GONE);
+                          return true;
+                      }
+                      return false;
+                  });
+              }
+              private void showFavoritesMode() {
+                  isShowingAllApps = false;
+                  displayedApps.clear();
+                  displayedApps.addAll(favoriteApps);
+                  txtModeHint.setText("★ Ứng dụng ghim (" + favoriteApps.size() + ") • Vuốt mép phải để tìm A-Z");
+                  adapter.notifyDataSetChanged();
+              }
+              private void showAllAppsMode() {
+                  isShowingAllApps = true;
+                  displayedApps.clear();
+                  displayedApps.addAll(allApps);
+                  txtModeHint.setText("Tất cả ứng dụng (" + allApps.size() + ") • Chạm đồng hồ để về ★");
+                  adapter.notifyDataSetChanged();
+              }
+              private void showAppOptionsDialog(AppItem app) {
+                  boolean isFav = favPackages.contains(app.packageName);
+                  String favOption = isFav ? "Bỏ ghim khỏi màn hình chính" : "★ Ghim lên màn hình chính";
+                  String[] options = {favOption, "Thông tin ứng dụng (App Info)", "Gỡ cài đặt"};
+                  new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                          .setTitle(app.label)
+                          .setItems(options, (dialog, which) -> {
+                              if (which == 0) {
+                                  if (isFav) {
+                                      favPackages.remove(app.packageName);
+                                      Toast.makeText(this, "Đã bỏ ghim " + app.label, Toast.LENGTH_SHORT).show();
+                                  } else {
+                                      favPackages.add(app.packageName);
+                                      Toast.makeText(this, "Đã ghim " + app.label, Toast.LENGTH_SHORT).show();
+                                  }
+                                  prefs.edit().putStringSet(KEY_FAVS, favPackages).apply();
+                                  rebuildLists();
+                              } else if (which == 1) {
+                                  Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                                  intent.setData(Uri.parse("package:" + app.packageName));
+                                  startActivity(intent);
+                              } else if (which == 2) {
+                                  Intent intent = new Intent(Intent.ACTION_DELETE);
+                                  intent.setData(Uri.parse("package:" + app.packageName));
+                                  startActivity(intent);
+                              }
+                          }).show();
+              }
+              private void loadApps() {
+                  PackageManager pm = getPackageManager();
+                  Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+                  mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List<ResolveInfo> infos = pm.queryIntentActivities(mainIntent, 0);
+                  allApps.clear();
+                  String myPkg = getPackageName();
+                  for (ResolveInfo info : infos) {
+                      String pkg = info.activityInfo.packageName;
+                      if (pkg.equals(myPkg)) continue;
+                      AppItem item = new AppItem();
+                      item.label = info.loadLabel(pm).toString().trim();
+                      item.packageName = pkg;
+                      item.icon = info.loadIcon(pm);
+                      item.cleanFirstLetter = extractFirstAsciiLetter(item.label);
+                      allApps.add(item);
+                  }
+                  Collections.sort(allApps, Comparator.comparing(a -> normalizeVietnamese(a.label)));
+                  if (favPackages.isEmpty()) {
+                      String[] defaultFavs = {"youtube", "chrome", "zalo", "facebook", "camera", "settings", "phone", "mms"};
+                      for (AppItem app : allApps) {
+                          String check = (app.packageName + " " + app.label).toLowerCase();
+                          for (String kw : defaultFavs) {
+                              if (check.contains(kw) && favPackages.size() < 7) {
+                                  favPackages.add(app.packageName);
+                                  break;
+                              }
+                          }
+                      }
+                      prefs.edit().putStringSet(KEY_FAVS, favPackages).apply();
+                  }
+                  rebuildLists();
+              }
+              private void rebuildLists() {
+                  favoriteApps.clear();
+                  letterPositionMap.clear();
+                  for (int i = 0; i < allApps.size(); i++) {
+                      AppItem app = allApps.get(i);
+                      if (favPackages.contains(app.packageName)) favoriteApps.add(app);
+                      if (!letterPositionMap.containsKey(app.cleanFirstLetter)) letterPositionMap.put(app.cleanFirstLetter, i);
+                  }
+                  if (isShowingAllApps) showAllAppsMode();
+                  else showFavoritesMode();
+              }
+              private String extractFirstAsciiLetter(String text) {
+                  if (TextUtils.isEmpty(text)) return "#";
+                  String norm = normalizeVietnamese(text);
+                  char c = Character.toUpperCase(norm.charAt(0));
+                  if (c >= 'A' && c <= 'Z') return String.valueOf(c);
+                  return "#";
+              }
+              private String normalizeVietnamese(String str) {
+                  String temp = Normalizer.normalize(str, Normalizer.Form.NFD);
+                  return temp.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                             .replace('đ', 'd').replace('Đ', 'D').toLowerCase();
+              }
+              @Override public void onBackPressed() {
+                  if (isShowingAllApps) showFavoritesMode();
+              }
+              @Override protected void onDestroy() {
+                  super.onDestroy();
+                  unregisterReceiver(packageReceiver);
+              }
+              private class AppAdapter extends BaseAdapter {
+                  @Override public int getCount() { return displayedApps.size(); }
+                  @Override public Object getItem(int pos) { return displayedApps.get(pos); }
+                  @Override public long getItemId(int pos) { return pos; }
+                  @Override public View getView(int position, View convertView, ViewGroup parent) {
+                      LinearLayout row;
+                      ImageView iconView;
+                      TextView titleView;
+                      if (convertView == null) {
+                          row = new LinearLayout(MainActivity.this);
+                          row.setOrientation(LinearLayout.HORIZONTAL);
+                          row.setGravity(Gravity.CENTER_VERTICAL);
+                          row.setPadding(8, 22, 16, 22);
+                          iconView = new ImageView(MainActivity.this);
+                          iconView.setId(android.R.id.icon);
+                          int iconSize = (int) (44 * getResources().getDisplayMetrics().density);
+                          iconView.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+                          titleView = new TextView(MainActivity.this);
+                          titleView.setId(android.R.id.text1);
+                          titleView.setTextColor(Color.WHITE);
+                          titleView.setTextSize(18f);
+                          titleView.setSingleLine(true);
+                          titleView.setEllipsize(TextUtils.TruncateAt.END);
+                          titleView.setShadowLayer(4f, 0f, 1f, Color.parseColor("#99000000"));
+                          LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                          textParams.leftMargin = (int) (18 * getResources().getDisplayMetrics().density);
+                          titleView.setLayoutParams(textParams);
+                          row.addView(iconView);
+                          row.addView(titleView);
+                      } else {
+                          row = (LinearLayout) convertView;
+                          iconView = row.findViewById(android.R.id.icon);
+                          titleView = row.findViewById(android.R.id.text1);
+                      }
+                      AppItem item = displayedApps.get(position);
+                      iconView.setImageDrawable(item.icon);
+                      titleView.setText(item.label);
+                      return row;
+                  }
+              }
+          }
+          EOF
+
+          $BUILD_TOOLS/aapt package -f -m -J niagara/src -M niagara/AndroidManifest.xml -S niagara/res -I $PLATFORM
+          javac -source 1.8 -target 1.8 -d niagara/obj -cp $PLATFORM niagara/src/com/luan/niagaralite/*.java
+          $BUILD_TOOLS/d8 niagara/obj/com/luan/niagaralite/*.class --lib $PLATFORM --output niagara/
+          $BUILD_TOOLS/aapt package -f -M niagara/AndroidManifest.xml -S niagara/res -I $PLATFORM -F niagara/unsigned.apk
+          (cd niagara && $BUILD_TOOLS/aapt add unsigned.apk classes.dex)
+          $BUILD_TOOLS/zipalign -f 4 niagara/unsigned.apk niagara/aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out output_apks/Luan_Niagara_Launcher.apk niagara/aligned.apk
+
+      - name: Upload Compiled APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bo_2_Launcher_APK
+          path: output_apks/*.apk
