@@ -498,11 +498,12 @@ jobs:
           }
           EOF
 
-          $BUILD_TOOLS/aapt package -f -m -J jbl/src -M jbl/AndroidManifest.xml -S jbl/res -I$PLATFORM
+          $BUILD_TOOLS/aapt package -f -m -J jbl/src -M jbl/AndroidManifest.xml -S jbl/res -I $PLATFORM
           javac -source 1.8 -target 1.8 -d jbl/obj -cp $PLATFORM jbl/src/com/luan/jbllauncher/*.java
-          $BUILD_TOOLS/d8 jbl/obj/com/luan/jbllauncher/*.class --lib$PLATFORM --output jbl/
-          $BUILD_TOOLS/aapt package -f -M jbl/AndroidManifest.xml -S jbl/res -I$PLATFORM -F jbl/unsigned.apk
-          (cd jbl && $BUILD_TOOLS/aapt add unsigned.apk classes.dex)$BUILD_TOOLS/zipalign -f 4 jbl/unsigned.apk jbl/aligned.apk
+          $BUILD_TOOLS/d8 jbl/obj/com/luan/jbllauncher/*.class --lib $PLATFORM --output jbl/
+          $BUILD_TOOLS/aapt package -f -M jbl/AndroidManifest.xml -S jbl/res -I $PLATFORM -F jbl/unsigned.apk
+          (cd jbl && $BUILD_TOOLS/aapt add unsigned.apk classes.dex)
+          $BUILD_TOOLS/zipalign -f 4 jbl/unsigned.apk jbl/aligned.apk
           $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out output_apks/JBL_TV_Launcher.apk jbl/aligned.apk
 
           cat <<-'EOF' > niagara/AndroidManifest.xml
@@ -536,3 +537,380 @@ jobs:
           EOF
 
           cat <<-'EOF' > niagara/res/layout/activity_main.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+              android:layout_width="match_parent"
+              android:layout_height="match_parent"
+              android:background="#4D000000">
+              <LinearLayout
+                  android:layout_width="match_parent"
+                  android:layout_height="match_parent"
+                  android:orientation="vertical"
+                  android:paddingTop="56dp"
+                  android:paddingStart="28dp"
+                  android:paddingEnd="48dp">
+                  <LinearLayout
+                      android:id="@+id/headerClock"
+                      android:layout_width="wrap_content"
+                      android:layout_height="wrap_content"
+                      android:orientation="vertical"
+                      android:layout_marginBottom="20dp">
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="HH:mm"
+                          android:format24Hour="HH:mm"
+                          android:textColor="#FFFFFF"
+                          android:textSize="54sp"
+                          android:fontFamily="sans-serif-light"
+                          android:shadowColor="#80000000"
+                          android:shadowDx="0"
+                          android:shadowDy="2"
+                          android:shadowRadius="6" />
+                      <TextClock
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:format12Hour="EEEE, dd MMMM"
+                          android:format24Hour="EEEE, dd MMMM"
+                          android:textColor="#D0D0D0"
+                          android:textSize="16sp"
+                          android:layout_marginTop="-6dp" />
+                      <TextView
+                          android:id="@+id/txtModeHint"
+                          android:layout_width="wrap_content"
+                          android:layout_height="wrap_content"
+                          android:text="Ung dung ghim (Nhan giu app de them/bot)"
+                          android:textColor="#80FFFFFF"
+                          android:textSize="12sp"
+                          android:layout_marginTop="6dp" />
+                  </LinearLayout>
+                  <ListView
+                      android:id="@+id/appListView"
+                      android:layout_width="match_parent"
+                      android:layout_height="match_parent"
+                      android:divider="@null"
+                      android:dividerHeight="4dp"
+                      android:scrollbars="none"
+                      android:overScrollMode="never" />
+              </LinearLayout>
+              <TextView
+                  android:id="@+id/letterPopup"
+                  android:layout_width="88dp"
+                  android:layout_height="88dp"
+                  android:layout_gravity="center"
+                  android:gravity="center"
+                  android:textColor="#FFFFFF"
+                  android:textSize="42sp"
+                  android:textStyle="bold"
+                  android:visibility="gone" />
+              <LinearLayout
+                  android:id="@+id/alphabetBar"
+                  android:layout_width="38dp"
+                  android:layout_height="match_parent"
+                  android:layout_gravity="end|center_vertical"
+                  android:layout_marginTop="110dp"
+                  android:layout_marginBottom="48dp"
+                  android:gravity="center"
+                  android:orientation="vertical" />
+          </FrameLayout>
+          EOF
+
+          cat <<-'EOF' > niagara/src/com/luan/niagaralite/MainActivity.java
+          package com.luan.niagaralite;
+          import android.app.Activity;
+          import android.app.AlertDialog;
+          import android.content.BroadcastReceiver;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.IntentFilter;
+          import android.content.SharedPreferences;
+          import android.content.pm.PackageManager;
+          import android.content.pm.ResolveInfo;
+          import android.graphics.Color;
+          import android.graphics.drawable.Drawable;
+          import android.graphics.drawable.GradientDrawable;
+          import android.net.Uri;
+          import android.os.Bundle;
+          import android.provider.Settings;
+          import android.text.TextUtils;
+          import android.view.Gravity;
+          import android.view.MotionEvent;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.widget.BaseAdapter;
+          import android.widget.ImageView;
+          import android.widget.LinearLayout;
+          import android.widget.ListView;
+          import android.widget.TextView;
+          import android.widget.Toast;
+          import java.text.Normalizer;
+          import java.util.ArrayList;
+          import java.util.Collections;
+          import java.util.Comparator;
+          import java.util.HashMap;
+          import java.util.HashSet;
+          import java.util.List;
+          import java.util.Map;
+          import java.util.Set;
+
+          public class MainActivity extends Activity {
+              private ListView appListView;
+              private LinearLayout alphabetBar, headerClock;
+              private TextView letterPopup, txtModeHint;
+              private List<AppItem> allApps = new ArrayList<>();
+              private List<AppItem> favoriteApps = new ArrayList<>();
+              private List<AppItem> displayedApps = new ArrayList<>();
+              private Map<String, Integer> letterPositionMap = new HashMap<>();
+              private AppAdapter adapter;
+              private SharedPreferences prefs;
+              private Set<String> favPackages = new HashSet<>();
+              private boolean isShowingAllApps = false;
+              private static final String PREFS_NAME = "NiagaraPrefs";
+              private static final String KEY_FAVS = "fav_packages";
+              private static final String[] ALPHABET = {
+                  "*", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M",
+                  "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z", "#"
+              };
+              private static class AppItem {
+                  String label;
+                  String cleanFirstLetter;
+                  String packageName;
+                  Drawable icon;
+              }
+              private final BroadcastReceiver packageReceiver = new BroadcastReceiver() {
+                  @Override public void onReceive(Context context, Intent intent) { loadApps(); }
+              };
+              @Override
+              protected void onCreate(Bundle savedInstanceState) {
+                  super.onCreate(savedInstanceState);
+                  setContentView(R.layout.activity_main);
+                  prefs = getSharedPreferences(PREFS_NAME, MODE_PRIVATE);
+                  favPackages = new HashSet<>(prefs.getStringSet(KEY_FAVS, new HashSet<>()));
+                  appListView = findViewById(R.id.appListView);
+                  alphabetBar = findViewById(R.id.alphabetBar);
+                  letterPopup = findViewById(R.id.letterPopup);
+                  headerClock = findViewById(R.id.headerClock);
+                  txtModeHint = findViewById(R.id.txtModeHint);
+                  GradientDrawable popupBg = new GradientDrawable();
+                  popupBg.setShape(GradientDrawable.OVAL);
+                  popupBg.setColor(Color.parseColor("#CC1E1F23"));
+                  popupBg.setStroke(3, Color.parseColor("#66FFFFFF"));
+                  letterPopup.setBackground(popupBg);
+                  headerClock.setOnClickListener(v -> showFavoritesMode());
+                  adapter = new AppAdapter();
+                  appListView.setAdapter(adapter);
+                  appListView.setOnItemClickListener((parent, view, position, id) -> {
+                      AppItem app = displayedApps.get(position);
+                      Intent launchIntent = getPackageManager().getLaunchIntentForPackage(app.packageName);
+                      if (launchIntent != null) startActivity(launchIntent);
+                  });
+                  appListView.setOnItemLongClickListener((parent, view, position, id) -> {
+                      showAppOptionsDialog(displayedApps.get(position));
+                      return true;
+                  });
+                  setupAlphabetScrollbar();
+                  IntentFilter filter = new IntentFilter();
+                  filter.addAction(Intent.ACTION_PACKAGE_ADDED);
+                  filter.addAction(Intent.ACTION_PACKAGE_REMOVED);
+                  filter.addDataScheme("package");
+                  registerReceiver(packageReceiver, filter);
+                  loadApps();
+              }
+              private void setupAlphabetScrollbar() {
+                  alphabetBar.removeAllViews();
+                  for (String letter : ALPHABET) {
+                      TextView tv = new TextView(this);
+                      tv.setText(letter);
+                      tv.setTextColor(letter.equals("*") ? Color.parseColor("#FFD54F") : Color.parseColor("#CCFFFFFF"));
+                      tv.setTextSize(11f);
+                      tv.setGravity(Gravity.CENTER);
+                      LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f);
+                      tv.setLayoutParams(lp);
+                      alphabetBar.addView(tv);
+                  }
+                  alphabetBar.setOnTouchListener((v, event) -> {
+                      int action = event.getAction();
+                      if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_MOVE) {
+                          float y = event.getY();
+                          int height = alphabetBar.getHeight();
+                          int index = (int) ((y / height) * ALPHABET.length);
+                          index = Math.max(0, Math.min(ALPHABET.length - 1, index));
+                          String selectedLetter = ALPHABET[index];
+                          letterPopup.setText(selectedLetter);
+                          letterPopup.setVisibility(View.VISIBLE);
+                          if (selectedLetter.equals("*")) {
+                              showFavoritesMode();
+                          } else {
+                              if (!isShowingAllApps) showAllAppsMode();
+                              Integer targetPos = letterPositionMap.get(selectedLetter);
+                              if (targetPos != null) appListView.setSelectionFromTop(targetPos, 0);
+                          }
+                          return true;
+                      } else if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) {
+                          letterPopup.setVisibility(View.GONE);
+                          return true;
+                      }
+                      return false;
+                  });
+              }
+              private void showFavoritesMode() {
+                  isShowingAllApps = false;
+                  displayedApps.clear();
+                  displayedApps.addAll(favoriteApps);
+                  txtModeHint.setText("* Ung dung ghim (" + favoriteApps.size() + ") - Vuot mep phai de tim A-Z");
+                  adapter.notifyDataSetChanged();
+              }
+              private void showAllAppsMode() {
+                  isShowingAllApps = true;
+                  displayedApps.clear();
+                  displayedApps.addAll(allApps);
+                  txtModeHint.setText("Tat ca ung dung (" + allApps.size() + ") - Cham dong ho de ve *");
+                  adapter.notifyDataSetChanged();
+              }
+              private void showAppOptionsDialog(AppItem app) {
+                  boolean isFav = favPackages.contains(app.packageName);
+                  String favOption = isFav ? "Bo ghim khoi man hinh chinh" : "* Ghim len man hinh chinh";
+                  String[] options = {favOption, "Thong tin ung dung (App Info)", "Go cai dat"};
+                  new AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                          .setTitle(app.label)
+                          .setItems(options, (dialog, which) -> {
+                              if (which == 0) {
+                                  if (isFav) {
+                                      favPackages.remove(app.packageName);
+                                      Toast.makeText(this, "Da bo ghim " + app.label, Toast.LENGTH_SHORT).show();
+                                  } else {
+                                      favPackages.add(app.packageName);
+                                      Toast.makeText(this, "Da ghim " + app.label, Toast.LENGTH_SHORT).show();
+                                  }
+                                  prefs.edit().putStringSet(KEY_FAVS, favPackages).apply();
+                                  rebuildLists();
+                              } else if (which == 1) {
+                                  Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+                                  intent.setData(Uri.parse("package:" + app.packageName));
+                                  startActivity(intent);
+                              } else if (which == 2) {
+                                  Intent intent = new Intent(Intent.ACTION_DELETE);
+                                  intent.setData(Uri.parse("package:" + app.packageName));
+                                  startActivity(intent);
+                              }
+                          }).show();
+              }
+              private void loadApps() {
+                  PackageManager pm = getPackageManager();
+                  Intent mainIntent = new Intent(Intent.ACTION_MAIN, null);
+                  mainIntent.addCategory(Intent.CATEGORY_LAUNCHER);
+                  List<ResolveInfo> infos = pm.queryIntentActivities(mainIntent, 0);
+                  allApps.clear();
+                  String myPkg = getPackageName();
+                  for (ResolveInfo info : infos) {
+                      String pkg = info.activityInfo.packageName;
+                      if (pkg.equals(myPkg)) continue;
+                      AppItem item = new AppItem();
+                      item.label = info.loadLabel(pm).toString().trim();
+                      item.packageName = pkg;
+                      item.icon = info.loadIcon(pm);
+                      item.cleanFirstLetter = extractFirstAsciiLetter(item.label);
+                      allApps.add(item);
+                  }
+                  Collections.sort(allApps, Comparator.comparing(a -> normalizeVietnamese(a.label)));
+                  if (favPackages.isEmpty()) {
+                      String[] defaultFavs = {"youtube", "chrome", "zalo", "facebook", "camera", "settings", "phone", "mms"};
+                      for (AppItem app : allApps) {
+                          String check = (app.packageName + " " + app.label).toLowerCase();
+                          for (String kw : defaultFavs) {
+                              if (check.contains(kw) && favPackages.size() < 7) {
+                                  favPackages.add(app.packageName);
+                                  break;
+                              }
+                          }
+                      }
+                      prefs.edit().putStringSet(KEY_FAVS, favPackages).apply();
+                  }
+                  rebuildLists();
+              }
+              private void rebuildLists() {
+                  favoriteApps.clear();
+                  letterPositionMap.clear();
+                  for (int i = 0; i < allApps.size(); i++) {
+                      AppItem app = allApps.get(i);
+                      if (favPackages.contains(app.packageName)) favoriteApps.add(app);
+                      if (!letterPositionMap.containsKey(app.cleanFirstLetter)) letterPositionMap.put(app.cleanFirstLetter, i);
+                  }
+                  if (isShowingAllApps) showAllAppsMode();
+                  else showFavoritesMode();
+              }
+              private String extractFirstAsciiLetter(String text) {
+                  if (TextUtils.isEmpty(text)) return "#";
+                  String norm = normalizeVietnamese(text);
+                  char c = Character.toUpperCase(norm.charAt(0));
+                  if (c >= 'A' && c <= 'Z') return String.valueOf(c);
+                  return "#";
+              }
+              private String normalizeVietnamese(String str) {
+                  String temp = Normalizer.normalize(str, Normalizer.Form.NFD);
+                  return temp.replaceAll("\\p{InCombiningDiacriticalMarks}+", "")
+                             .replace('đ', 'd').replace('Đ', 'D').toLowerCase();
+              }
+              @Override public void onBackPressed() {
+                  if (isShowingAllApps) showFavoritesMode();
+              }
+              @Override protected void onDestroy() {
+                  super.onDestroy();
+                  unregisterReceiver(packageReceiver);
+              }
+              private class AppAdapter extends BaseAdapter {
+                  @Override public int getCount() { return displayedApps.size(); }
+                  @Override public Object getItem(int pos) { return displayedApps.get(pos); }
+                  @Override public long getItemId(int pos) { return pos; }
+                  @Override public View getView(int position, View convertView, ViewGroup parent) {
+                      LinearLayout row;
+                      ImageView iconView;
+                      TextView titleView;
+                      if (convertView == null) {
+                          row = new LinearLayout(MainActivity.this);
+                          row.setOrientation(LinearLayout.HORIZONTAL);
+                          row.setGravity(Gravity.CENTER_VERTICAL);
+                          row.setPadding(8, 22, 16, 22);
+                          iconView = new ImageView(MainActivity.this);
+                          iconView.setId(android.R.id.icon);
+                          int iconSize = (int) (44 * getResources().getDisplayMetrics().density);
+                          iconView.setLayoutParams(new LinearLayout.LayoutParams(iconSize, iconSize));
+                          titleView = new TextView(MainActivity.this);
+                          titleView.setId(android.R.id.text1);
+                          titleView.setTextColor(Color.WHITE);
+                          titleView.setTextSize(18f);
+                          titleView.setSingleLine(true);
+                          titleView.setEllipsize(TextUtils.TruncateAt.END);
+                          titleView.setShadowLayer(4f, 0f, 1f, Color.parseColor("#99000000"));
+                          LinearLayout.LayoutParams textParams = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+                          textParams.leftMargin = (int) (18 * getResources().getDisplayMetrics().density);
+                          titleView.setLayoutParams(textParams);
+                          row.addView(iconView);
+                          row.addView(titleView);
+                      } else {
+                          row = (LinearLayout) convertView;
+                          iconView = row.findViewById(android.R.id.icon);
+                          titleView = row.findViewById(android.R.id.text1);
+                      }
+                      AppItem item = displayedApps.get(position);
+                      iconView.setImageDrawable(item.icon);
+                      titleView.setText(item.label);
+                      return row;
+                  }
+              }
+          }
+          EOF
+
+          $BUILD_TOOLS/aapt package -f -m -J niagara/src -M niagara/AndroidManifest.xml -S niagara/res -I $PLATFORM
+          javac -source 1.8 -target 1.8 -d niagara/obj -cp $PLATFORM niagara/src/com/luan/niagaralite/*.java
+          $BUILD_TOOLS/d8 niagara/obj/com/luan/niagaralite/*.class --lib $PLATFORM --output niagara/
+          $BUILD_TOOLS/aapt package -f -M niagara/AndroidManifest.xml -S niagara/res -I $PLATFORM -F niagara/unsigned.apk
+          (cd niagara && $BUILD_TOOLS/aapt add unsigned.apk classes.dex)
+          $BUILD_TOOLS/zipalign -f 4 niagara/unsigned.apk niagara/aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out output_apks/Luan_Niagara_Launcher.apk niagara/aligned.apk
+
+      - name: Upload Compiled APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bo_2_Launcher_APK
+          path: output_apks/*.apk
